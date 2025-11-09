@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AI Rhymes Video Generator</title>
+</head>
+<body>
+  <h1>🎵 Kids Rhymes Video Generator</h1>
+  <textarea id="lyrics" rows="4" cols="40" placeholder="Apni rhyme yahan likho..."></textarea><br><br>
+  <button onclick="generateVideo()">Generate Video</button>
+  <pre id="result"></pre>
+
+  <script>
+    // 👉 Yahan apni API key direct likh do (testing ke liye)
+    const apiKey = "hf_xxx12345abcd";  // ← yahan tumhari Hugging Face key daalni hai
+
+    async function generateVideo() {
+      const lyrics = document.getElementById("lyrics").value;
+      document.getElementById("result").textContent = "Please wait...";
+
+      const response = await fetch(
+        "https://api-inference.huggingface.co/models/your-model-name", // ← yahan apna model name daalo (jaise stabilityai/stable-video-diffusion)
+        {
+          headers: { Authorization: `Bearer ${apiKey}` },
+          method: "POST",
+          body: JSON.stringify({ inputs: lyrics }),
+        }
+      );
+
+      const data = await response.json();
+      document.getElementById("result").textContent = JSON.stringify(data, null, 2);
+    }
+  </script>
+</body>
+</html>
