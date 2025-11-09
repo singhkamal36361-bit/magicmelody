@@ -1,11 +1,188 @@
-!DOCTYPE html>
-<html>
-  <head>
-    <meta charset="UTF-8" />
-    <title>Magic Melody</title>
-  </head>
-  <body style="text-align:center; font-family:sans-serif;">
-    <h1>🎵 Magic Melody 🎵</h1>
-    <p>Welcome to my rhymes website!</p>
-  </body>
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Magic Melody - Hedra AI 3D Rhymes</title>
+<style>
+  body{font-family:system-ui,Arial; text-align:center; padding:18px; background:linear-gradient(#FFF1E6,#FFEFCF);}
+  h1{margin:6px 0; color:#e85d75}
+  textarea, input[type="text"]{width:92%; padding:10px; margin:8px 0; border-radius:8px; border:1px solid #ddd}
+  select{padding:8px; border-radius:8px}
+  button{padding:10px 18px; background:#ff6b6b; color:white; border:none; border-radius:8px; font-weight:600}
+  #videoBox{margin-top:18px}
+  .small{font-size:13px;color:#555;margin-top:6px}
+  pre{white-space:pre-wrap; text-align:left; display:inline-block; max-width:92%; background:#fff;padding:10px;border-radius:8px;border:1px dashed #ddd}
+</style>
+</head>
+<body>
+  <h1>🎵 Magic Melody (Hedra AI)</h1>
+  <p class="small">Apni lyrics likho, apni Hedra API key daalo, aur "Generate" dabao.</p>
+
+  <label class="small">1) API Key (Hedra) — <em>Apni key yahan paste karo</em></label><br>
+  <input id="apiKey" type="text" placeholder="hedra_sk_xxx..." />
+
+  <label class="small">2) Lyrics / Prompt (Hindi / English)</label><br>
+  <textarea id="lyrics" rows="5" placeholder="Chhoti si titli udi..."></textarea>
+
+  <div class="small" style="margin-top:6px">
+    <label>3) Style (choose): </label>
+    <select id="style">
+      <option value="3d-cartoon">3D Cartoon (Cocomelon/Infobells like)</option>
+      <option value="2d-cartoon">2D Cartoon</option>
+      <option value="cute-kids">Cute kids animation</option>
+    </select>
+  </div>
+
+  <div style="margin-top:10px">
+    <button id="genBtn">🎬 Generate Video</button>
+  </div>
+
+  <div id="status" class="small"></div>
+
+  <div id="videoBox"></div>
+
+  <script>
+  // ===== Helper: show status =====
+  const statusEl = document.getElementById('status');
+  function setStatus(t){ statusEl.innerText = t; }
+
+  // ===== Main: generate call =====
+  document.getElementById('genBtn').addEventListener('click', async ()=>{
+    const apiKey = document.getElementById('apiKey').value.trim();
+    const lyrics = document.getElementById('lyrics').value.trim();
+    const style = document.getElementById('style').value;
+
+    if(!apiKey){ alert('Kripya apni Hedra API key daalein'); return; }
+    if(!lyrics){ alert('Kripya lyrics likhein'); return; }
+
+    setStatus('⏳ Sending request to Hedra...');
+
+    // --- NOTE: Hedra's actual endpoint and body may vary slightly.
+    // Replace endpoint or body keys if Hedra docs specify different names.
+    try{
+      // Example generic endpoint (Hedra docs use /v1/generations or /v1/characters/... )
+      const endpoint = 'https://api.hedra.com/v1/generate'; // <- change if Hedra uses different path
+
+      // Construct prompt / payload
+      const payload = {
+        type: 'video',
+        prompt: lyrics,
+        style: style,
+        duration_seconds: 10,
+        // extra options you can adjust per Hedra docs
+      };
+
+      const resp = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-API-Key': apiKey,           // Hedra supports X-API-Key in many endpoints
+          'Authorization': 'Bearer ' + apiKey // sometimes Authorization header required
+        },
+        body: JSON.stringify(payload)
+      });
+
+      if(!resp.ok){
+        const text = await resp.text();
+        setStatus('❌ Error from Hedra: ' + resp.status + ' — ' + text);
+        return;
+      }
+
+      const data = await resp.json();
+      // Hedra may return directly a video url, or a job id to poll.
+      console.log('hedra response:', data);
+      setStatus('✅ Request accepted. Processing...');
+
+      // CASE A: If direct video URL present (common field names: video_url, url, asset_url)
+      if(data.video_url || data.url || data.asset_url){
+        const vidUrl = data.video_url || data.url || data.asset_url;
+        renderVideo(vidUrl);
+        setStatus('🎉 Video ready');
+        return;
+      }
+
+      // CASE B: If they returned a job id -> poll for completion
+      // Common pattern: { job_id: 'abc123' } or { id: '...' }
+      const jobId = data.job_id || data.id || data.request_id;
+      if(jobId){
+        setStatus('⏳ Generation in progress (job: ' + jobId + '). Polling...');
+        await pollJob(apiKey, jobId);
+        return;
+      }
+
+      // CASE C: some APIs return a nested object
+      if(data.result && (data.result.video_url || data.result.url)) {
+        const vidUrl = data.result.video_url || data.result.url;
+        renderVideo(vidUrl);
+        setStatus('🎉 Video ready');
+        return;
+      }
+
+      // If nothing matched, show raw response so you can adapt endpoint/body
+      document.getElementById('videoBox').innerHTML = '<pre>'+JSON.stringify(data,null,2)+'</pre>';
+      setStatus('ℹ️ Inspect response above — adjust endpoint/body per Hedra docs.');
+
+    }catch(err){
+      console.error(err);
+      setStatus('❌ Network / JS error: ' + err.message);
+    }
+  });
+
+  // ===== Poll job helper (example polling: adjust path per Hedra docs) =====
+  async function pollJob(apiKey, jobId){
+    const pollEndpointBase = 'https://api.hedra.com/v1/jobs/'; // <- change if Hedra uses different path
+    let tries = 0;
+    while(tries < 40){
+      tries++;
+      setStatus('⏳ Polling status... attempt ' + tries);
+      try{
+        const r = await fetch(pollEndpointBase + jobId, {
+          headers: { 'X-API-Key': apiKey, 'Authorization': 'Bearer '+apiKey }
+        });
+        if(!r.ok){
+          setStatus('❌ Poll error ' + r.status);
+          return;
+        }
+        const j = await r.json();
+        console.log('job status', j);
+        // Example job response shape: { status: 'completed', result: { video_url: '...' } }
+        const status = j.status || j.state || (j.data && j.data.status);
+        if(status === 'completed' || status === 'succeeded'){
+          // try extract url
+          const vid = j.video_url || j.result?.video_url || j.data?.result?.video_url || j.result?.asset_url || j.asset_url;
+          if(vid){
+            renderVideo(vid);
+            setStatus('🎉 Video ready');
+            return;
+          }
+          document.getElementById('videoBox').innerHTML = '<pre>'+JSON.stringify(j,null,2)+'</pre>';
+          setStatus('✅ Job completed — see result above');
+          return;
+        } else if(status === 'failed' || status === 'error'){
+          document.getElementById('videoBox').innerHTML = '<pre>'+JSON.stringify(j,null,2)+'</pre>';
+          setStatus('❌ Generation failed — see details above');
+          return;
+        }
+      }catch(e){
+        console.error(e);
+      }
+      await new Promise(r => setTimeout(r, 3000)); // 3s between polls
+    }
+    setStatus('⚠️ Poll timeout — no result. Check Hedra dashboard or API docs.');
+  }
+
+  // ===== Render video or embed =====
+  function renderVideo(url){
+    const box = document.getElementById('videoBox');
+    // If it's mp4, use video tag, else iframe for hosted players (YouTube)
+    if(url.endsWith('.mp4') || url.includes('.mp4?')){
+      box.innerHTML = `<video controls src="${url}" style="width:92%;border-radius:10px"></video>`;
+    } else {
+      // embed in iframe (some providers return a player url)
+      box.innerHTML = `<iframe src="${url}" style="width:92%;height:260px;border-radius:10px;border:0"></iframe>`;
+    }
+  }
+  </script>
+</body>
 </html>
